@@ -1,0 +1,128 @@
+/**
+ * Clones an existing sheet in the workbook.
+ * 
+ * @param sheetNum The index of the sheet to clone.
+ * @param newName The name to assign to the cloned sheet. If null, a unique name will be generated.
+ * @return XSSFSheet representing the cloned sheet.
+ * @throws IllegalArgumentException if the sheet index or name is invalid.
+ * @throws POIXMLException if there are errors during cloning.
+ */
+public XSSFSheet cloneSheet(int sheetNum, String newName) {
+    validateSheetIndex(sheetNum);
+    XSSFSheet sourceSheet = getSourceSheet(sheetNum);
+    String clonedSheetName = (newName == null) ? generateUniqueSheetName(sourceSheet.getSheetName()) : validateAndGetSheetName(newName);
+    XSSFSheet clonedSheet = createSheet(clonedSheetName);
+    cloneSheetRelations(sourceSheet, clonedSheet);
+    copySheetReferences(sourceSheet, clonedSheet);
+    copySheetContent(sourceSheet, clonedSheet);
+    handleUnsupportedFeatures(clonedSheet);
+    setupClonedSheet(clonedSheet);
+    return clonedSheet;
+}
+/**
+ * Validates the sheet index.
+ * 
+ * @param sheetNum The index of the sheet to validate.
+ */
+private void validateSheetIndex(int sheetNum) {
+    if (sheetNum < 0 || sheetNum >= sheets.size()) {
+        throw new IllegalArgumentException("Sheet index " + sheetNum + " is out of bounds.");
+    }
+}
+/**
+ * Retrieves the source sheet for cloning.
+ * 
+ * @param sheetNum The index of the sheet to clone.
+ * @return The source sheet.
+ */
+private XSSFSheet getSourceSheet(int sheetNum) {
+    return sheets.get(sheetNum);
+}
+/**
+ * Generates a unique name for the cloned sheet if no name is provided.
+ * 
+ * @param originalName The name of the source sheet.
+ * @return A unique name for the cloned sheet.
+ */
+private String generateUniqueSheetName(String originalName) {
+    // Logic to generate a unique sheet name
+    return getUniqueSheetName(originalName);
+}
+/**
+ * Validates and returns the provided sheet name.
+ * 
+ * @param newName The name to validate.
+ * @return The valid sheet name.
+ */
+private String validateAndGetSheetName(String newName) {
+    validateSheetName(newName);
+    return newName;
+}
+/**
+ * Clones the relationships of the source sheet to the cloned sheet.
+ * 
+ * @param sourceSheet The source sheet.
+ * @param clonedSheet The cloned sheet.
+ */
+private void cloneSheetRelations(XSSFSheet sourceSheet, XSSFSheet clonedSheet) {
+    for (RelationPart relationPart: sourceSheet.getRelationParts()) {
+        POIXMLDocumentPart relation = relationPart.getDocumentPart();
+        if (relation instanceof XSSFDrawing) {
+            continue; // Drawings are handled separately
+        }
+        addRelation(relationPart, clonedSheet);
+    }
+}
+/**
+ * Copies references such as hyperlinks from the source sheet to the cloned sheet.
+ * 
+ * @param sourceSheet The source sheet.
+ * @param clonedSheet The cloned sheet.
+ */
+private void copySheetReferences(XSSFSheet sourceSheet, XSSFSheet clonedSheet) {
+    for (ReferenceRelationship reference: sourceSheet.getReferenceRelationships()) {
+        if (reference instanceof HyperlinkRelationship) {
+            createHyperlink(reference.getUri(), reference.isExternal(), reference.getId());
+        }
+    }
+}
+/**
+ * Copies the content of the source sheet to the cloned sheet.
+ * 
+ * @param sourceSheet The source sheet.
+ * @param clonedSheet The cloned sheet.
+ */
+private void copySheetContent(XSSFSheet sourceSheet, XSSFSheet clonedSheet) {
+    try (UnsynchronizedByteArrayOutputStream outputStream = UnsynchronizedByteArrayOutputStream.builder().get();
+         InputStream inputStream = outputStream.toInputStream()) {
+
+        sourceSheet.write(outputStream);
+        clonedSheet.read(inputStream);
+    } catch (IOException e) {
+        throw new POIXMLException("Error copying sheet content", e);
+    }
+}
+/**
+ * Handles unsupported features in the cloned sheet, such as legacy drawing and page setup.
+ * 
+ * @param clonedSheet The cloned sheet.
+ */
+private void handleUnsupportedFeatures(XSSFSheet clonedSheet) {
+    CTWorksheet ctWorksheet = clonedSheet.getCTWorksheet();
+    if (ctWorksheet.isSetLegacyDrawing()) {
+        LOG.warn("Cloning sheets with comments is not yet supported.");
+        ctWorksheet.unsetLegacyDrawing();
+    }
+    if (ctWorksheet.isSetPageSetup()) {
+        LOG.warn("Cloning sheets with page setup is not yet supported.");
+        ctWorksheet.unsetPageSetup();
+    }
+}
+/**
+ * Finalizes the setup of the cloned sheet.
+ * 
+ * @param clonedSheet The cloned sheet.
+ */
+private void setupClonedSheet(XSSFSheet clonedSheet) {
+    clonedSheet.setSelected(false);
+}
